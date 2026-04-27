@@ -4,6 +4,8 @@ const config = require('../config/env');
 const Organization = require('../models/organization.model');
 const ApiError = require('../utils/ApiError');
 
+
+
 const auth = async (req, res, next) => {
   console.log(req.body)
   try {

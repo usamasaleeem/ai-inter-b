@@ -10,9 +10,11 @@ const router = express.Router();
 
 
 
-router
-  .route('/public/:id')
+
+router.route('/public/:id')
   .get(jobController.getPublicJob)
+router.route('/public/getjobs/:id')
+  .get(jobController.getJobsByOrg)
 
 // all routes require auth
 router.use(auth);

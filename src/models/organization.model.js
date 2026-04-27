@@ -8,6 +8,9 @@ const organizationSchema = mongoose.Schema(
       required: true,
       trim: true,
     },
+    logo: {
+      type: String,
+    },
     email: {
       type: String,
       required: true,

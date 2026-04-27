@@ -1,7 +1,15 @@
 const Candidate = require('../models/candidate.model');
 const Job = require('../models/job.model');
 const ApiError = require('../utils/ApiError');
+const nodemailer = require("nodemailer");
 
+const transporter = nodemailer.createTransport({
+  service: "gmail", // or SMTP
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
 const applyToJob = async (jobId, candidateBody,workExperience) => {
   const job = await Job.findById(jobId);
   if (!job) {

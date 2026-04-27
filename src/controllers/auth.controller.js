@@ -4,6 +4,7 @@ const httpStatus = require('http-status').status;
 const catchAsync = require('../utils/catchAsync');
 const authService = require('../services/auth.service');
 const Organization = require('../models/organization.model');
+const cloudinary = require("cloudinary").v2;
 
 
 const { Polar } = require("@polar-sh/sdk");
@@ -122,7 +123,61 @@ const upsertTemplate = catchAsync(async (req, res) => {
     templates,
   });
 });
+const uploadLogoController = async (req, res) => {
+  try {
+    const file = req.file;
 
+    if (!file || !file.buffer) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    console.log("Logo received:", file.originalname, "Size:", file.buffer.length);
+const orgId=req.organization.id
+    // Upload image to Cloudinary using stream
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        {
+          folder: "logos", // 👈 separate folder
+          resource_type: "image",
+          public_id:
+            Date.now() +
+            "-" +
+            file.originalname.replace(/\.[^/.]+$/, ""),
+          transformation: [
+            { width: 300, height: 300, crop: "limit" }, // optional resize
+            { quality: "auto" }, // optimize
+          ],
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      ).end(file.buffer);
+    });
+  await Organization.findByIdAndUpdate(
+      orgId,
+      {
+        logo: result.secure_url,
+     
+      }
+    );
+console.log(result.secure_url)
+    return res.json({
+      success: true,
+      url: result.secure_url,
+      public_id: result.public_id,
+      format: result.format,
+    });
+
+  } catch (error) {
+    console.error("Logo upload error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Logo upload failed",
+      error: error.message,
+    });
+  }
+};
 const getTemplates = catchAsync(async (req, res) => {
   const organizationId = req.organization.id;
 
@@ -143,6 +198,8 @@ const getProfile = async (req, res) => {
 const login = catchAsync(async (req, res) => {
   const { email, password } = req.body;
   const organization = await authService.loginOrganizationWithEmailAndPassword(email, password);
+ 
+ console.log(organization.id)
   const transformOrg = {
     id: organization.id,
     name: organization.name,
@@ -172,5 +229,6 @@ module.exports = {
   login,
   upsertTemplate,
   getTemplates,
+  uploadLogoController,
   verifyCheckout
 };

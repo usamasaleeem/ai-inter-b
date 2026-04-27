@@ -2,6 +2,7 @@ const httpStatus = require('http-status').status;
 const catchAsync = require('../utils/catchAsync');
 const jobService = require('../services/job.service');
 const authService = require('../services/auth.service');
+const Organization = require('../models/organization.model');
 
 const createJob = catchAsync(async (req, res) => {
   console.log(req.body)
@@ -12,6 +13,30 @@ const createJob = catchAsync(async (req, res) => {
 const getJobs = catchAsync(async (req, res) => {
   const jobs = await jobService.queryJobsByOrganization(req.organization.id);
   res.send(jobs);
+});
+const getJobsByOrg = catchAsync(async (req, res) => {
+  const orgId = req.params.id;
+
+  // 1. Get jobs
+  const jobs = await jobService.queryJobsByOrganization(orgId);
+
+  // 2. Get organization (ONLY name + logo)
+  const organization = await Organization.findById(orgId)
+    .select("name logo") // 👈 only required fields
+    .lean();
+
+  if (!organization) {
+    throw new ApiError(404, "Organization not found");
+  }
+
+  // 3. Send structured response
+  res.status(200).json({
+    jobs,
+    profile: {
+      name: organization.name,
+      logo: organization.logo,
+    },
+  });
 });
 
 const getJob = catchAsync(async (req, res) => {
@@ -65,5 +90,6 @@ module.exports = {
   deleteJob,
   publishJob,
   draftJob,
+  getJobsByOrg,
   getPublicJob
 };
