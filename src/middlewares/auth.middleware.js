@@ -5,29 +5,33 @@ const Organization = require('../models/organization.model');
 const ApiError = require('../utils/ApiError');
 
 
-
 const auth = async (req, res, next) => {
-  console.log(req.body)
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
+    const token = req.header("Authorization")?.replace("Bearer ", "");
 
     if (!token) {
-      throw new ApiError(401, 'Please authenticate');
+      throw new ApiError(401, "Please authenticate");
     }
 
     const decoded = jwt.verify(token, config.jwt.secret);
-    const organization = await Organization.findOne({ _id: decoded.sub });
+
+    const organization = await Organization.findById(decoded.sub);
 
     if (!organization) {
-      throw new Error();
+      throw new ApiError(401, "Organization not found");
+    }
+
+    // 🔥 STATUS CHECK
+    if (organization.status !== "active") {
+      throw new ApiError(401, "Account is not active. Please upgrade or activate your plan.");
     }
 
     req.token = token;
     req.organization = organization;
+
     next();
   } catch (error) {
-    next(new ApiError(401, 'Please authenticate'));
+    next(new ApiError(401, "Please authenticate"));
   }
 };
-
 module.exports = auth;

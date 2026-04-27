@@ -35,7 +35,6 @@ const organizationSchema = mongoose.Schema(
     },
       status: {
     type: String,
-    enum: ['active', 'inactive', 'trial', 'cancelled'],
     default: 'inactive',
   },
 subscription: {
