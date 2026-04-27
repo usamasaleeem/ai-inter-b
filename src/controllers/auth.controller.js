@@ -99,7 +99,7 @@ const register = catchAsync(async (req, res) => {
   console.log(req.body)
   const organization = await authService.registerOrganization({
     ...req.body,
-    status:'inactive'
+    status:'pending-payment'
   });
   const transformOrg = {
     id: organization.id,
