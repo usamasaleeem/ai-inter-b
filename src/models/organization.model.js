@@ -11,6 +11,9 @@ const organizationSchema = mongoose.Schema(
     logo: {
       type: String,
     },
+     verified: {
+      type: String,
+    },
     email: {
       type: String,
       required: true,
@@ -76,7 +79,7 @@ subscription: {
   {
     status: {
       type: String,
-      enum: ["Applied", "Shortlisted", "Interviewed", "Hired", "Rejected"],
+      enum: ["Applied","Invited-For-Interview", "Shortlisted", "Interviewed", "Hired", "Rejected"],
       required: true,
     },
    

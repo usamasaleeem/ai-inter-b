@@ -45,7 +45,6 @@ const candidateSchema = mongoose.Schema(
       overallScore: Number,
       recommendation: {
         type: String,
-        enum: ['Strong Hire', 'Hire', 'No Hire'],
       },
       summary: String,
       strengths: [String],
@@ -57,7 +56,6 @@ const candidateSchema = mongoose.Schema(
         skillName: String,
         level: {
           type: String,
-          enum: ['Expert', 'Advanced', 'Intermediate', 'Beginner'],
         },
         score: Number,
       }

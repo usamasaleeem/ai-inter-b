@@ -8,6 +8,8 @@ const cloudinary = require("cloudinary").v2;
 const pdfParse = require('pdf-parse'); // This will now work with v1.1.1
 const retellService = require('../services/retell.service');
 const nodemailer = require("nodemailer");
+
+const emailUtil = require('../utils/email.js');
 const transporter = nodemailer.createTransport({
   host: "email-smtp.ap-southeast-2.amazonaws.com", // change if your region is different
   port: 465,
@@ -18,13 +20,28 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const apply = catchAsync(async (req, res) => {
-  const { jobId,resumeContent, ...candidateBody } = req.body;
-      const workExperience = await retellService.extractWorkExperience(resumeContent);
-console.log(workExperience.workExperience)
-  const candidate = await candidateService.applyToJob(jobId, candidateBody,workExperience.workExperience);
 
-  console.log('created')
+
+
+
+const apply = catchAsync(async (req, res) => {
+  const { jobId, resumeContent, ...candidateBody } = req.body;
+  const workExperience = await retellService.extractWorkExperience(resumeContent);
+  console.log(workExperience.workExperience);
+  
+  const candidate = await candidateService.applyToJob(jobId, candidateBody, workExperience.workExperience);
+  const job = await jobService.getJobById(jobId);
+  
+  // Get organization using job's organization ID
+  const organization = await authService.getOrganizationProfile(job.organizationId);
+    console.log(organization)
+  const template = await authService.getTemplateByStatus(organization._id, "Invited-For-Interview");
+  console.log(template)
+  if (template) {
+    await emailUtil.sendApplicationReceivedEmail(candidate, job, organization, template);
+  }
+  
+  console.log('created');
   res.status(httpStatus.CREATED).send(candidate);
 });
 
@@ -93,9 +110,8 @@ const uploadResumeController = async (req, res) => {
   }
 };
 
-
 const updateStatus = catchAsync(async (req, res) => {
-  const { status, email } = req.body;
+  const { status, email, interviewDetails = {} } = req.body;
 
   // 1. Update candidate
   const candidate = await candidateService.updateCandidateStatus(
@@ -103,35 +119,98 @@ const updateStatus = catchAsync(async (req, res) => {
     status,
     req.organization.id
   );
-console.log(candidate)
+  console.log(candidate);
 
-  // 2. Get matching template
+  // 2. Get the job detailss
+  const job = await jobService.getJobById(candidate.jobId);
+  
+  // 3. Get matching template based on status
   const template = await authService.getTemplateByStatus(
     req.organization.id,
     status
   );
-console.log(template)
-let html = template.content;
-const interviewLink = `http://localhost:5173/interview/${candidate.jobId}/${candidate._id}`;
-html = html
-  .replace(/{{name}}/g, candidate.name || "")
-  .replace(/{{interview_link}}/g, interviewLink)
-  .replace(/{{job_title}}/g, candidate.role || "")
-  .replace(/{{company_name}}/g, "Routox LLC");
-html = html.replace(/\n/g, "<br>");
-  // 3. Send email if template exists
-  if (template) {
-    await transporter.sendMail({
-      from: 'info@hirelai.com',
-      to: 'itsoxama@gmail.com',
-      subject: template.title || `Update regarding your application`,
-      html: html|| `<p>Status updated to ${status}</p>`,
-    });
+  console.log(template);
+
+  // 4. Send email based on status if template exists
+  if (template && candidate.email) {
+    let emailResult;
+    
+    switch (status) {
+      case "Invited-For-Interview":
+        emailResult = await emailUtil.sendInterviewInvitationEmail(
+          candidate, 
+          job, 
+          req.organization, 
+          template, 
+          interviewDetails
+        );
+        break;
+        
+      case "Shortlisted":
+        emailResult = await emailUtil.sendShortlistedEmail(
+          candidate, 
+          job, 
+          req.organization, 
+          template
+        );
+        break;
+        
+      case "Interviewed":
+        // You might want to send a post-interview feedback email
+        emailResult = await emailUtil.sendEmail({
+          to: candidate.email,
+          subject: template.title || `Interview Update: ${job?.title}`,
+          html: emailUtil.replaceTemplateVariables(template.content, {
+            name: candidate.name,
+            jobTitle: job?.title,
+            companyName: req.organization.name,
+            status: "Interviewed",
+            interviewDate: interviewDetails.date,
+            interviewTime: interviewDetails.time,
+          }),
+        });
+        break;
+        
+      case "Hired":
+        emailResult = await emailUtil.sendJobOfferEmail(
+          candidate, 
+          job, 
+          req.organization, 
+          template, 
+          interviewDetails
+        );
+        break;
+        
+      case "Rejected":
+        emailResult = await emailUtil.sendRejectionEmail(
+          candidate, 
+          job, 
+          req.organization, 
+          template,
+          interviewDetails.reason || ''
+        );
+        break;
+        
+      case "Applied":
+      default:
+        emailResult = await emailUtil.sendApplicationReceivedEmail(
+          candidate, 
+          job, 
+          req.organization, 
+          template
+        );
+        break;
+    }
+    
+    if (!emailResult.success) {
+      console.error(`Failed to send ${status} email to ${candidate.email}:`, emailResult.error);
+    }
+  } else if (!template) {
+    console.warn(`No template found for status: ${status}`);
   }
 
   res.send(candidate);
 });
-
 module.exports = {
   apply,
   getCandidatesByJob,

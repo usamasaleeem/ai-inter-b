@@ -15,6 +15,9 @@ const jobSchema = mongoose.Schema(
     agentid: {
       type: String,
     },
+     prompt: {
+      type: String,
+    },
     llmId: {
       type: String,
     },

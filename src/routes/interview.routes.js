@@ -1,6 +1,5 @@
 const express = require('express');
 const interviewController = require('../controllers/interview.controller');
-const auth = require('../middlewares/auth.middleware');
 
 const router = express.Router();
 
@@ -11,5 +10,9 @@ router.get('/voice', interviewController.startInterview);
 
 // End interview might be called by frontend or retell webhook. Leaving public for demo
 router.post('/end', interviewController.endInterview);
+router.post('/upload-url', interviewController.getUploadUrl);
+
+router.post('/get-interview', interviewController.getAllSessionVideos);
+
 
 module.exports = router;

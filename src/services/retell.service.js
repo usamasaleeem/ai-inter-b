@@ -10,16 +10,66 @@ const retellClient = new Retell({
 });
 
 
-const generateSystemPrompt = (job) => {
-  return `You are a professional AI Interviewer for the role of ${job.title}. 
-The interview will be ${job.interviewType} focused.
-The candidate needs to have experience level: ${job.experienceLevel}.
-Ask questions from the following list: ${job.questions.join(', ')}.
-Evaluate their skills on: ${job.skills.join(', ')}.
-Be polite, professional, and objective.
-Descrption:  ${job.description}
-Time Limit 20 minutes
+const generateSystemPrompt = async (job) => {
+  const prompt = `
+Create a SYSTEM PROMPT for an AI interviewer.
+
+Job:
+Role: ${job.title}
+Type: ${job.interviewType}
+Experience: ${job.experienceLevel}
+Skills: ${job.skills.join(", ")}
+Description: ${job.description}
+
+Rules:
+- Keep instructions clear and structured
+- Do NOT be overly creative
+- Be deterministic and consistent
+
+Interview Behavior:
+- Act like a professional interviewer
+- Total time: 10–15 minutes
+- Ask one question at a time
+- Wait for user response
+- Keep questions short and clear
+
+Interview Flow:
+1. Introduction (1 question)
+2. Basic questions (2–3)
+3. Core skill questions (3–5)
+4. Follow-up questions based on answers
+5. Behavioral question (1–2)
+6. Closing
+
+Evaluation Criteria:
+- Communication
+- ${job.skills.join("\n- ")}
+- Problem solving
+
+Instructions:
+- Generate your own questions (do not depend on predefined ones)
+- Ask follow-ups if answer is weak or incomplete
+- If answer is strong, increase difficulty
+- Do NOT ask multiple questions at once
+- Do NOT explain answers
+
+Output:
+Return ONLY the system prompt text.
 `;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4.1-mini",
+    messages: [
+      {
+        role: "system",
+        content: "You are a strict prompt generator.",
+      },
+      { role: "user", content: prompt },
+    ],
+    temperature: 0.3, // 🔑 important for mini
+  });
+
+  return completion.choices[0].message.content;
 };
 
 const updateAgentLLM = async (jobData, updateddata) => {
@@ -28,13 +78,17 @@ const updateAgentLLM = async (jobData, updateddata) => {
       throw new Error("Missing llmId for update");
     }
 
-    const prompt = generateSystemPrompt(updateddata);
+    const prompt = await generateSystemPrompt(updateddata);
 
     const updatedLLM = await retellClient.llm.update(jobData.llmId, {
       general_prompt: prompt,
     });
 
-    return updatedLLM;
+    return {
+      llm: updatedLLM,
+      systemPrompt: prompt,
+    };
+
   } catch (error) {
     console.error(
       "Failed to update Retell LLM",
@@ -45,7 +99,8 @@ const updateAgentLLM = async (jobData, updateddata) => {
 };
 const createAgent = async (jobData) => {
   try {
-    var prompt = generateSystemPrompt(jobData)
+    const prompt =await generateSystemPrompt(jobData);
+
     const conversationFlowResponse = await retellClient.llm.create({
       model: 'gpt-4.1-nano',
       general_prompt: prompt,
@@ -54,18 +109,23 @@ const createAgent = async (jobData) => {
     const agent = await retellClient.agent.create({
       agent_name: `Interviewer for ${jobData.title}`,
       voice_id: 'retell-Cimo',
-
       response_engine: {
         type: "retell-llm",
-        llm_id: conversationFlowResponse.llm_id
+        llm_id: conversationFlowResponse.llm_id,
       },
     });
-    console.log(agent)
 
-    return agent;
+    return {
+      agent:agent,
+      llm: conversationFlowResponse,
+      systemPrompt: prompt,
+    };
 
   } catch (error) {
-    console.error('Failed to create Retell Agent', error.response?.data || error);
+    console.error(
+      'Failed to create Retell Agent',
+      error.response?.data || error
+    );
     throw new Error('Retell API error: createAgent');
   }
 };
@@ -91,10 +151,14 @@ const startCall = async (candidate, job) => {
   }
 };
 
+
+
+
 const analyzeInterview = async (transcript, job) => {
   const prompt = `
 Analyze this interview for:
 Role: ${job.title}
+Interviewer Criteria for passing the interview:${job.prompt} 
 Skills: ${job.skills.join(', ')}
 
 Return STRICT JSON:
@@ -119,8 +183,9 @@ Return STRICT JSON:
     "culturalFit": number
   }
 }
+  On the basis of above requirements judgde the below transcript and return reposnse
 
-Transcript:
+Interview Transcript between interviewer and candidate:
 ${transcript}
 `;
 
@@ -142,6 +207,11 @@ ${transcript}
     throw new Error("Invalid JSON from AI");
   }
 };
+
+
+
+
+
 const extractWorkExperience = async (resumeText) => {
   const prompt = `
 Extract ONLY the work experience from this resume.

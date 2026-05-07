@@ -8,6 +8,116 @@ const ApiError = require('../utils/ApiError');
 const Job = require('../models/job.model');
 const Organization = require('../models/organization.model');
 
+const { PutObjectCommand, CompleteMultipartUploadCommand, UploadPartCommand, CreateMultipartUploadCommand, AbortMultipartUploadCommand, GetObjectCommand, ListObjectsV2Command } = require("@aws-sdk/client-s3");
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+const r2 = require("../utils/r2");
+
+// Get presigned URL for initial chunk
+
+// Generate 10 presigned URLs in one call
+// controllers/interview.controller.js
+// Keep your original working getUploadUrl - it was working fine!
+// 🎯 Standalone test controller (NO req.body)
+
+
+
+
+const getAllSessionVideos = async (req, res) => {
+  try {
+    // ✅ Dummy data
+    const jobId = "69f38b374c9beaf54c48d430";
+    const candidateId = "69f47c257b13bfba2d8bc495";
+
+    const prefix = `${jobId}/${candidateId}/`;
+
+    // 🌐 Your public R2 base URL
+    const PUBLIC_BASE_URL = "https://pub-f93361d6774644f194d023afe9bb0f23.r2.dev";
+
+    // 📂 List all objects
+    const listCommand = new ListObjectsV2Command({
+      Bucket: process.env.S3_BUCKET,
+      Prefix: prefix,
+    });
+
+    const data = await r2.send(listCommand);
+
+    if (!data.Contents || data.Contents.length === 0) {
+      return res.json({
+        message: "No videos found",
+        files: [],
+      });
+    }
+
+    // 🎥 Filter + map directly to public URL
+    const files = data.Contents
+      .filter(obj =>
+        obj.Key.endsWith(".webm") || obj.Key.endsWith(".mp4")
+      )
+      .map(file => ({
+        key: file.Key,
+        url: `${PUBLIC_BASE_URL}/${file.Key}`, // ✅ direct mapping
+        size: file.Size,
+        lastModified: file.LastModified,
+      }));
+
+    res.json({
+      total: files.length,
+      files,
+    });
+
+  } catch (error) {
+    console.error("Error fetching videos:", error);
+    res.status(500).json({
+      error: "Failed to fetch videos",
+    });
+  }
+};
+
+const getUploadUrl = async (req, res) => {
+  try {
+    let { fileType, fileName,jobId,candidateId, folder } = req.body;
+
+    if (!fileType) {
+      fileType = "video/webm";
+    }
+
+    if (!fileType.startsWith("video/")) {
+      return res.status(400).json({ error: "Only video uploads allowed" });
+    }
+
+    // Generate unique filename if not provided
+    const extension = fileType.split("/")[1] || "webm";
+    const finalFileName = fileName || `${Date.now()}.${extension}`;
+    const key = folder ? `${folder}/${finalFileName}` : `${jobId}/${candidateId}/${finalFileName}`;
+
+    // Simple PUT presigned URL
+    const command = new PutObjectCommand({
+      Bucket: process.env.S3_BUCKET,
+      Key: key,
+      ContentType: fileType,
+    });
+
+    const uploadUrl = await getSignedUrl(r2, command, {
+      expiresIn: 3600, // 1 hour
+    });
+console.log(uploadUrl)
+    res.json({
+      uploadUrl,
+      key,
+      expiresIn: 3600
+    });
+  } catch (error) {
+    console.error("Failed to generate upload URL", error);
+    res.status(500).json({ error: "Failed to generate upload URL" });
+  }
+};
+
+
+
+
+
+
+
 const startInterview = catchAsync(async (req, res) => {
   const { candidateId, jobId } = req.body;
   console.log(jobId)
@@ -108,5 +218,6 @@ const createJobAgent = catchAsync(async (req, res) => {
 module.exports = {
   startInterview,
   endInterview,
-  createJobAgent,
+  createJobAgent,getUploadUrl,
+  getAllSessionVideos
 };

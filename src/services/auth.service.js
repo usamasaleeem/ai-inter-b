@@ -21,6 +21,7 @@ const getTemplates = async (organizationId) => {
   // 🔥 Group templates by status (matches your frontend)
   const grouped = {
     Applied: [],
+    "Invited-For-Interview": [],
     Shortlisted: [],
     Interviewed: [],
     Hired: [],
@@ -93,6 +94,7 @@ const getOrganizationProfile = async (organizationId) => {
   const groupedTemplates = {
     Applied: [],
     Shortlisted: [],
+    "Invited-For-Interview": [],
     Interviewed: [],
     Hired: [],
     Rejected: [],

@@ -8,6 +8,7 @@ const interviewRoutes = require('./interview.routes');
 const router = express.Router();
 
 router.use('/auth', authRoutes);
+
 router.use('/jobs', jobRoutes);
 router.use('/candidates', candidateRoutes);
 router.use('/interview', interviewRoutes);
