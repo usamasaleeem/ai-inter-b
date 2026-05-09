@@ -6,7 +6,7 @@ const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Default from email (must be verified in Resend)
-const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL || 'info@hirelai.com';
+const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL || 'Hirel AI <info@hirelai.com>';
 
 // Template variables replacement
 const replaceTemplateVariables = (content, variables) => {

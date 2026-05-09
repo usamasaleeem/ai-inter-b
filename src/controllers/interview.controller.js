@@ -8,7 +8,7 @@ const ApiError = require('../utils/ApiError');
 const Job = require('../models/job.model');
 const Organization = require('../models/organization.model');
 
-const { PutObjectCommand, CompleteMultipartUploadCommand, UploadPartCommand, CreateMultipartUploadCommand, AbortMultipartUploadCommand, GetObjectCommand, ListObjectsV2Command } = require("@aws-sdk/client-s3");
+const { PutObjectCommand, CompleteMultipartUploadCommand, UploadPartCommand, CreateMultipartUploadCommand, AbortMultipartUploadCommand, GetObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const r2 = require("../utils/r2");
 
@@ -25,8 +25,9 @@ const r2 = require("../utils/r2");
 const getAllSessionVideos = async (req, res) => {
   try {
     // ✅ Dummy data
-    const jobId = "69f38b374c9beaf54c48d430";
-    const candidateId = "69f47c257b13bfba2d8bc495";
+    console.log(req.body.candidate)
+    const jobId = req.body.candidate.jobId;
+    const candidateId = req.body.candidate._id;
 
     const prefix = `${jobId}/${candidateId}/`;
 
@@ -76,17 +77,15 @@ const getAllSessionVideos = async (req, res) => {
 const getUploadUrl = async (req, res) => {
   try {
     let { fileType, fileName,jobId,candidateId, folder } = req.body;
-
-    if (!fileType) {
-      fileType = "video/webm";
-    }
+console.log(fileType)
+  
 
     if (!fileType.startsWith("video/")) {
       return res.status(400).json({ error: "Only video uploads allowed" });
     }
 
     // Generate unique filename if not provided
-    const extension = fileType.split("/")[1] || "webm";
+    const extension = fileType.split("/")[1] || "webm"||'mp4';
     const finalFileName = fileName || `${Date.now()}.${extension}`;
     const key = folder ? `${folder}/${finalFileName}` : `${jobId}/${candidateId}/${finalFileName}`;
 
@@ -121,6 +120,48 @@ console.log(uploadUrl)
 const startInterview = catchAsync(async (req, res) => {
   const { candidateId, jobId } = req.body;
   console.log(jobId)
+
+
+  // Delete existing folder for this job/candidate before starting new interview
+  try {
+    const folderPrefix = `${jobId}/${candidateId}/`;
+    console.log(`Deleting existing folder: ${folderPrefix}`);
+    
+    // List all objects in the folder
+    const listCommand = new ListObjectsV2Command({
+      Bucket: process.env.S3_BUCKET,
+      Prefix: folderPrefix,
+    });
+
+    const listedObjects = await r2.send(listCommand);
+
+    if (listedObjects.Contents && listedObjects.Contents.length > 0) {
+      // Prepare objects for batch deletion
+      const objectsToDelete = listedObjects.Contents.map(obj => ({ Key: obj.Key }));
+      
+      // Delete in batches of 1000 (R2/S3 limit)
+      const deleteCommand = new DeleteObjectsCommand({
+        Bucket: process.env.S3_BUCKET,
+        Delete: {
+          Objects: objectsToDelete,
+          Quiet: false,
+        },
+      });
+
+      const deleteResult = await r2.send(deleteCommand);
+      console.log(`Deleted ${deleteResult.Deleted?.length || 0} existing files for ${folderPrefix}`);
+      
+      if (deleteResult.Errors && deleteResult.Errors.length > 0) {
+        console.error('Errors during deletion:', deleteResult.Errors);
+      }
+    } else {
+      console.log(`No existing files found for ${folderPrefix}`);
+    }
+  } catch (deleteError) {
+    console.error('Error deleting existing folder:', deleteError);
+    // Continue with interview creation even if deletion fails
+  }
+
 
   // Ideally verify that candidate and job belong to the org if doing strict checks,
   // but let's assume candidate and job are public enough for candidate to start.

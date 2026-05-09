@@ -130,7 +130,7 @@ const updateStatus = catchAsync(async (req, res) => {
     status
   );
   console.log(template);
-
+ 
   // 4. Send email based on status if template exists
   if (template && candidate.email) {
     let emailResult;
