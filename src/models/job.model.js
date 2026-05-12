@@ -54,6 +54,67 @@ const jobSchema = mongoose.Schema(
   }
 );
 
+
+
+
+/* =========================
+   INDEXES
+========================= */
+
+/**
+ * Main dashboard listing
+ * Organization jobs sorted newest first
+ */
+jobSchema.index({
+  organizationId: 1,
+  createdAt: -1,
+});
+
+/**
+ * Filter jobs by status
+ */
+jobSchema.index({
+  organizationId: 1,
+  status: 1,
+});
+
+/**
+ * Filter jobs by experience level
+ */
+jobSchema.index({
+  organizationId: 1,
+  experienceLevel: 1,
+});
+
+/**
+ * Filter jobs by interview type
+ */
+jobSchema.index({
+  organizationId: 1,
+  interviewType: 1,
+});
+
+/**
+ * Fast title search
+ */
+jobSchema.index({
+  title: 'text',
+  description: 'text',
+  skills: 'text',
+});
+
+/**
+ * Skills filtering
+ */
+jobSchema.index({
+  skills: 1,
+});
+
+/**
+ * Agent lookup
+ */
+
+
 const Job = mongoose.model('Job', jobSchema);
 
 module.exports = Job;

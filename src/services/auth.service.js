@@ -114,6 +114,17 @@ const getOrganizationProfile = async (organizationId) => {
     templatesGrouped: groupedTemplates, // 🔥 extra structured data
   };
 };
+const getOrganizationProfileBySlug = async (slug) => {
+  const organization = await Organization.findOne({ slug })
+    .select('_id name logo slug')
+    .lean();
+
+  if (!organization) {
+    throw new ApiError(404, 'Organization not found');
+  }
+
+  return organization;
+};
 const loginOrganizationWithEmailAndPassword = async (email, password) => {
   const org = await Organization.findOne({ email });
 
@@ -186,6 +197,6 @@ module.exports = {
   getOrganizationProfile,
   registerOrganization,
   loginOrganizationWithEmailAndPassword,
-  updateOrganizationProfile,
+  updateOrganizationProfile,getOrganizationProfileBySlug,
   generateAuthTokens,upsertTemplate,getTemplates
 };

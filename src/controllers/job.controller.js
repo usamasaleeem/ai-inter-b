@@ -15,15 +15,15 @@ const getJobs = catchAsync(async (req, res) => {
   res.send(jobs);
 });
 const getJobsByOrg = catchAsync(async (req, res) => {
-  const orgId = req.params.id;
+ const slug = req.params.id; // Change from 'id' to 'slug'
 
   // 1. Get jobs
-  const jobs = await jobService.queryJobsByOrganization(orgId);
 
   // 2. Get organization (ONLY name + logo)
-  const organization = await Organization.findById(orgId)
-    .select("name logo") // 👈 only required fields
+  const organization = await Organization.findOne({slug})
+    .select("_id name logo") // 👈 only required fields
     .lean();
+  const jobs = await jobService.queryJobsByOrganization(organization._id);
 
   if (!organization) {
     throw new ApiError(404, "Organization not found");

@@ -11,12 +11,12 @@ router.post(
   "/resume-upload",
   upload.single("resume"),
   // 🔥 THIS uploads file to Cloudinary
-  candidateController.uploadResumeController
+  candidateController.applyWithResume
 );
 // the rest require auth
 router.use(auth);
 
-router.get('/getall', candidateController.getCandidatesByOrg);
+router.post('/getall', candidateController.getCandidatesByOrg);
 
 router.get('/job/:jobId', candidateController.getCandidatesByJob);
 router.get('/:id', candidateController.getCandidate);

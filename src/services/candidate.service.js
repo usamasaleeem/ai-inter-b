@@ -41,14 +41,139 @@ const getCandidatesByJob = async (jobId, organizationId) => {
   const candidates = await Candidate.find({ jobId }).sort({ appliedAt: -1 });
   return candidates;
 };
-const getCandidatesByOrg = async (organizationId) => {
-  // Ensure the organization owns the job
+const getCandidatesByOrg = async (
+  organizationId,
+  page = 1,
+  limit = 10,
+  filter = {}
+) => {
 
+  const skip = (page - 1) * limit;
 
-  const candidates = await Candidate.find({ organizationId }).sort({ appliedAt: -1 });
-  return candidates;
+  const query = {
+    organizationId,
+    $and: []
+  };
+
+  // STATUS FILTER
+  if (filter.status) {
+    query.$and.push({
+      status: filter.status
+    });
+  }
+
+  // JOB FILTER
+  if (filter.jobId) {
+    query.$and.push({
+      jobId: filter.jobId
+    });
+  }
+
+  // SEARCH FILTER
+  if (filter.search) {
+    query.$and.push({
+      $or: [
+        {
+          name: {
+            $regex: filter.search,
+            $options: 'i'
+          }
+        },
+        {
+          email: {
+            $regex: filter.search,
+            $options: 'i'
+          }
+        },
+        {
+          role: {
+            $regex: filter.search,
+            $options: 'i'
+          }
+        }
+      ]
+    });
+  }
+
+  // SCORE FILTER
+  if (
+    filter.minScore !== undefined ||
+    filter.maxScore !== undefined
+  ) {
+
+    // skip full range
+    if (
+      !(filter.minScore === 0 &&
+        filter.maxScore === 100)
+    ) {
+
+      // include undefined scores
+      if (filter.minScore === 0) {
+
+        query.$and.push({
+          $or: [
+            {
+              'aiAnalysis.overallScore': {
+                $exists: false
+              }
+            },
+            {
+              'aiAnalysis.overallScore': {
+                $gte: filter.minScore,
+                $lte: filter.maxScore
+              }
+            }
+          ]
+        });
+
+      } else {
+
+        const scoreQuery = {};
+
+        if (filter.minScore !== undefined) {
+          scoreQuery.$gte = filter.minScore;
+        }
+
+        if (filter.maxScore !== undefined) {
+          scoreQuery.$lte = filter.maxScore;
+        }
+
+        query.$and.push({
+          'aiAnalysis.overallScore': scoreQuery
+        });
+
+      }
+    }
+  }
+
+  // REMOVE EMPTY $and
+  if (query.$and.length === 0) {
+    delete query.$and;
+  }
+
+  console.log(query);
+
+  const [candidates, totalCount] =
+    await Promise.all([
+
+      Candidate.find(query)
+        .sort({ appliedAt: -1 })
+        .skip(skip)
+        .limit(limit),
+
+      Candidate.countDocuments(query)
+    ]);
+
+  return {
+    candidates,
+    totalCount,
+    currentPage: page,
+    totalPages: Math.ceil(totalCount / limit),
+    hasNextPage:
+      page < Math.ceil(totalCount / limit),
+    hasPrevPage: page > 1
+  };
 };
-
 const getCandidateById = async (id, organizationId) => {
   const candidate = await Candidate.findOne({ _id: id, organizationId });
   if (!candidate) {

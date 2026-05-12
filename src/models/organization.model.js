@@ -1,11 +1,17 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
-
+const slugify = require('slugify');
 const organizationSchema = mongoose.Schema(
   {
     name: {
       type: String,
       required: true,
+      trim: true,
+    },
+     slug: {
+      type: String,
+      unique: true,
+      sparse: true,
       trim: true,
     },
     logo: {
@@ -100,6 +106,89 @@ subscription: {
     timestamps: true,
   }
 );
+
+// Generate slug before save
+// Generate slug before save
+organizationSchema.pre('save', async function () {
+  const org = this;
+  
+  if (org.isModified('password')) {
+    org.password = await bcrypt.hash(org.password, 8);
+  }
+  
+  if (org.isModified('name') && org.name) {
+    const randomStr = Math.random().toString(36).substring(2, 7);
+    const baseSlug = slugify(org.name, { lower: true, strict: true });
+    org.slug = `${baseSlug}-${randomStr}`;
+  }
+});
+/* =========================
+   INDEXES
+========================= */
+
+/**
+ * Email login lookup
+ * VERY IMPORTANT
+ */
+organizationSchema.index(
+  {
+    email: 1,
+  },
+
+);
+
+/**
+ * Dashboard organization listing
+ */
+organizationSchema.index({
+  createdAt: -1,
+});
+
+/**
+ * Organization status filtering
+ */
+organizationSchema.index({
+  status: 1,
+});
+
+/**
+ * Industry filtering
+ */
+organizationSchema.index({
+  industry: 1,
+});
+
+/**
+ * Company size filtering
+
+/**
+ * Subscription plan filtering
+ */
+
+
+/**
+ * Subscription expiry checks
+ */
+
+
+/**
+ * Polar subscription lookup
+ */
+
+
+/**
+ * Auto AI interview enabled orgs
+ */
+
+
+/**
+ * Fast text search
+ */
+organizationSchema.index({
+  name: 'text',
+  email: 'text',
+  industry: 'text',
+});
 
 organizationSchema.pre('save', async function () {
   const org = this;

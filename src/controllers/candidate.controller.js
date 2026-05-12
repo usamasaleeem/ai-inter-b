@@ -51,8 +51,29 @@ const getCandidatesByJob = catchAsync(async (req, res) => {
   res.send(candidates);
 });
 const getCandidatesByOrg = catchAsync(async (req, res) => {
-  const candidates = await candidateService.getCandidatesByOrg(req.organization.id);
-  res.send(candidates);
+  const page = parseInt(req.body.page) || 1;
+   const filter = req.body.filter ;
+  const limit = parseInt(req.body.limit) || 10;
+  
+  const result = await candidateService.getCandidatesByOrg(
+    req.organization.id,
+    page,
+    limit,
+    filter
+  );
+  
+  res.json({
+    success: true,
+    data: result.candidates,
+    pagination: {
+      currentPage: result.currentPage,
+      totalPages: result.totalPages,
+      totalCount: result.totalCount,
+      hasNextPage: result.hasNextPage,
+      hasPrevPage: result.hasPrevPage,
+      limit: result.limit
+    }
+  });
 });
 
 const getCandidate = catchAsync(async (req, res) => {
@@ -60,6 +81,79 @@ const getCandidate = catchAsync(async (req, res) => {
 
   res.send(candidate);
 });
+
+const applyWithResume = catchAsync(async (req, res) => {
+  try {
+    console.log(req.body)
+    var { jobId, candidateData } = req.body;
+     candidateData=JSON.parse(candidateData)
+    const file = req.file;
+
+    if (!file || !file.buffer) {
+      return res.status(400).json({ message: "No resume file uploaded" });
+    }
+
+    // Parse PDF from buffer
+    const parsed = await pdfParse(file.buffer);
+    const extractedText = parsed.text;
+
+    // Upload to Cloudinary
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        {
+          folder: "resumes",
+          resource_type: "raw",
+          public_id: Date.now() + "-" + file.originalname.replace(/\.[^/.]+$/, ""),
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      ).end(file.buffer);
+    });
+
+    // Extract work experience from resume
+    const workExperience = await retellService.extractWorkExperience(extractedText);
+    
+    // Create candidate with extracted data
+    const candidate = await candidateService.applyToJob(
+      jobId, 
+      {
+        ...candidateData,
+        resumeUrl: result.secure_url
+      }, 
+      workExperience.workExperience
+    );
+    
+    const job = await jobService.getJobById(jobId);
+    const organization = await authService.getOrganizationProfile(job.organizationId);
+    const template = await authService.getTemplateByStatus(organization._id, "Invited-For-Interview");
+    
+    if (template) {
+      await emailUtil.sendApplicationReceivedEmail(candidate, job, organization, template);
+    }
+    
+    res.status(httpStatus.CREATED).send({
+      success: true,
+      candidate,
+      resumeUrl: result.secure_url,
+      extractedTextLength: extractedText.length
+    });
+    
+  } catch (error) {
+    console.error('Application submission error:', error);
+    return res.status(500).json({
+      success: false,
+      message: "Application submission failed",
+      error: error.message
+    });
+  }
+});
+
+
+
+
+
 
 const uploadResumeController = async (req, res) => {
   try {
@@ -217,5 +311,6 @@ module.exports = {
   getCandidate,
   getCandidatesByOrg,
   updateStatus,
-  uploadResumeController
+  uploadResumeController,
+  applyWithResume
 };
