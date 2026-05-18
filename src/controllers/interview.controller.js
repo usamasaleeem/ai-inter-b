@@ -237,7 +237,20 @@ const endInterview = catchAsync(async (req, res) => {
 
 const interview = await interviewInviteModel.findOne({ token });
   const job = await jobService.getJobById(interview.jobId);
-  
+  if (!interview) {
+  throw new Error('Interview not found');
+}
+
+interview.status = 'completed';
+
+
+
+
+
+await interview.save();
+  // Get mock analysis from retell end call mock
+
+
   const candidate = await candidateService.updateCandidateStatus(
     interview.candidateId,
     'Interviewed',
@@ -282,19 +295,6 @@ const status='Interviewed'
   } else if (!template) {
     console.warn(`No template found for status: ${status}`);
   }
-if (!interview) {
-  throw new Error('Interview not found');
-}
-
-interview.status = 'completed';
-
-
-
-
-
-await interview.save();
-  // Get mock analysis from retell end call mock
-
 
  
 
