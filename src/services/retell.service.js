@@ -109,6 +109,10 @@ const createAgent = async (jobData) => {
     const agent = await retellClient.agent.create({
       agent_name: `Interviewer for ${jobData.title}`,
       voice_id: 'retell-Cimo',
+      webhook_url:"https://scoff-retype-dislodge.ngrok-free.dev/api/interview/webhook",
+      webhook_events:["call_analyzed"],
+
+      max_call_duration_ms:600000,
       response_engine: {
         type: "retell-llm",
         llm_id: conversationFlowResponse.llm_id,
@@ -269,7 +273,49 @@ ${resumeText}
 };
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const endCall = async (callId, job) => {
+const endCall = async (transcript, job) => {
+
+
+    try {
+      // Fetch full call details
+   
+      // 🛑 If transcript not ready → retry
+    
+
+      const analysis = await analyzeInterview(transcript, job);
+
+      // 🛑 If analysis not valid → retry
+     
+
+      // ✅ Success
+      return {
+        transcript: transcript,
+
+        aiAnalysis: {
+          overallScore: analysis.overallScore,
+          recommendation: analysis.recommendation,
+          summary: analysis.summary,
+          strengths: analysis.strengths,
+          weaknesses: analysis.weaknesses,
+        },
+        skillsAssessment: analysis.skillsAssessment,
+        performanceMetrics: analysis.performanceMetrics,
+  
+      };
+
+    } catch (error) {
+      console.error(
+        `Attempt ${attempt + 1} failed`,
+        error.response?.data || error
+      );
+
+      await wait(2000 * Math.pow(2, attempt));
+    }
+  
+
+  throw new Error('Retell API error: analysis not available after retries');
+};
+const endCalltemp = async (callId, job) => {
   const MAX_RETRIES = 6;
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {

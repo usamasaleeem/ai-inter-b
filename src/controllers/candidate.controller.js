@@ -8,8 +8,11 @@ const cloudinary = require("cloudinary").v2;
 const pdfParse = require('pdf-parse'); // This will now work with v1.1.1
 const retellService = require('../services/retell.service');
 const nodemailer = require("nodemailer");
+const crypto = require("crypto");
 
 const emailUtil = require('../utils/email.js');
+const interviewInviteModel = require('../models/interviewInvite.model.js');
+const Job = require('../models/job.model.js');
 const transporter = nodemailer.createTransport({
   host: "email-smtp.ap-southeast-2.amazonaws.com", // change if your region is different
   port: 465,
@@ -23,27 +26,6 @@ const transporter = nodemailer.createTransport({
 
 
 
-
-const apply = catchAsync(async (req, res) => {
-  const { jobId, resumeContent, ...candidateBody } = req.body;
-  const workExperience = await retellService.extractWorkExperience(resumeContent);
-  console.log(workExperience.workExperience);
-  
-  const candidate = await candidateService.applyToJob(jobId, candidateBody, workExperience.workExperience);
-  const job = await jobService.getJobById(jobId);
-  
-  // Get organization using job's organization ID
-  const organization = await authService.getOrganizationProfile(job.organizationId);
-    console.log(organization)
-  const template = await authService.getTemplateByStatus(organization._id, "Invited-For-Interview");
-  console.log(template)
-  if (template) {
-    await emailUtil.sendApplicationReceivedEmail(candidate, job, organization, template);
-  }
-  
-  console.log('created');
-  res.status(httpStatus.CREATED).send(candidate);
-});
 
 // the following require auth (organization)
 const getCandidatesByJob = catchAsync(async (req, res) => {
@@ -82,127 +64,157 @@ const getCandidate = catchAsync(async (req, res) => {
   res.send(candidate);
 });
 
+
 const applyWithResume = catchAsync(async (req, res) => {
   try {
-    console.log(req.body)
-    var { jobId, candidateData } = req.body;
-     candidateData=JSON.parse(candidateData)
+    // 1. Early validation - fail fast
+    const { jobId, candidateData: rawCandidateData } = req.body;
     const file = req.file;
 
-    if (!file || !file.buffer) {
-      return res.status(400).json({ message: "No resume file uploaded" });
+    if (!jobId) {
+      return res.status(400).json({ success: false, message: "Job ID is required" });
     }
 
-    // Parse PDF from buffer
-    const parsed = await pdfParse(file.buffer);
-    const extractedText = parsed.text;
+    if (!file?.buffer) {
+      return res.status(400).json({ success: false, message: "No resume file uploaded" });
+    }
 
-    // Upload to Cloudinary
-    const result = await new Promise((resolve, reject) => {
-      cloudinary.uploader.upload_stream(
-        {
-          folder: "resumes",
-          resource_type: "raw",
-          public_id: Date.now() + "-" + file.originalname.replace(/\.[^/.]+$/, ""),
-        },
-        (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
-        }
-      ).end(file.buffer);
+    // 2. Parse JSON safely with error handling
+    let candidateData;
+    try {
+      candidateData = typeof rawCandidateData === 'string' 
+        ? JSON.parse(rawCandidateData) 
+        : rawCandidateData;
+    } catch (parseError) {
+      return res.status(400).json({ success: false, message: "Invalid candidate data format" });
+    }
+
+    // 3. Parallelize independent operations (PDF parsing & Cloudinary upload)
+    const [parsed, cloudinaryResult] = await Promise.all([
+      pdfParse(file.buffer),
+      uploadToCloudinary(file.buffer, file.originalname)
+    ]);
+
+    const extractedText = parsed.text;
+    const resumeUrl = cloudinaryResult.secure_url;
+
+    // 4. Extract work experience (consider making this non-blocking or optional)
+    let workExperience = { workExperience: null };
+    try {
+      // workExperience = await retellService.extractWorkExperience(extractedText);
+    } catch (extractError) {
+      console.warn('Work experience extraction failed:', extractError.message);
+    }
+
+    // 5. Create candidate and job lookup in parallel
+    const [candidate, job] = await Promise.all([
+      candidateService.applyToJob(jobId, {
+        ...candidateData,
+        resumeUrl
+      }, workExperience.workExperience),
+      jobService.getJobById(jobId)
+    ]);
+
+    // 6. Increment applicants count (simple atomic operation)
+    await Job.findByIdAndUpdate(jobId, {
+      $inc: { applicants: 1 }
     });
 
-    // Extract work experience from resume
-    const workExperience = await retellService.extractWorkExperience(extractedText);
-    
-    // Create candidate with extracted data
-    const candidate = await candidateService.applyToJob(
-      jobId, 
-      {
-        ...candidateData,
-        resumeUrl: result.secure_url
-      }, 
-      workExperience.workExperience
-    );
-    
-    const job = await jobService.getJobById(jobId);
-    const organization = await authService.getOrganizationProfile(job.organizationId);
-    const template = await authService.getTemplateByStatus(organization._id, "Invited-For-Interview");
-    
+    // 7. Optimize token generation with better uniqueness strategy
+    const token = await generateUniqueToken();
+
+    // 8. Create interview invite
+    const interviewInvite = await interviewInviteModel.create({
+      candidateId: candidate._id,
+      jobId: candidate.jobId || jobId,
+      token,
+    });
+
+    // 9. Get organization and template in parallel
+    const [organization, template] = await Promise.all([
+      authService.getOrganizationProfile(job.organizationId),
+      authService.getTemplateByStatus(job.organizationId, "Applied")
+    ]);
+
+    // 10. Send email asynchronously
     if (template) {
-      await emailUtil.sendApplicationReceivedEmail(candidate, job, organization, template);
+      emailUtil.sendApplicationReceivedEmail(candidate, job, token, organization, template)
+        .catch(emailError => console.error('Email sending failed:', emailError));
     }
-    
-    res.status(httpStatus.CREATED).send({
+
+    // 11. Return response
+    return res.status(httpStatus.CREATED).send({
       success: true,
       candidate,
-      resumeUrl: result.secure_url,
+      token,
+      resumeUrl,
       extractedTextLength: extractedText.length
     });
-    
+
   } catch (error) {
-    console.error('Application submission error:', error);
+    console.error('Application submission error:', {
+      message: error.message,
+      stack: error.stack,
+      body: req.body?.jobId ? { jobId: req.body.jobId } : undefined
+    });
+    
     return res.status(500).json({
       success: false,
       message: "Application submission failed",
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : "Internal server error"
     });
   }
 });
 
-
-
-
-
-
-const uploadResumeController = async (req, res) => {
-  try {
-    const file = req.file;
-
-    if (!file || !file.buffer) {
-      return res.status(400).json({ message: "No file uploaded" });
-    }
-
-    console.log('File received:', file.originalname, 'Size:', file.buffer.length);
-    console.log('pdfParse type:', typeof pdfParse); // Should log 'function'
-
-    // Parse PDF from buffer
-    const parsed = await pdfParse(file.buffer);
-    const extractedText = parsed.text;
-   
-    console.log('PDF parsed successfully, text length:', extractedText.length);
-
-    // Upload to Cloudinary
-    const result = await new Promise((resolve, reject) => {
-      cloudinary.uploader.upload_stream(
-        {
-          folder: "resumes",
-          resource_type: "raw",
-          public_id: Date.now() + "-" + file.originalname.replace(/\.[^/.]+$/, ""),
-        },
-        (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
-        }
-      ).end(file.buffer);
-    });
-
-    return res.json({
-      success: true,
-      url: result.secure_url,
-      text: extractedText,
-      textLength: extractedText.length
-    });
-    
-  } catch (error) {
-    console.error('Upload error details:', error);
-    return res.status(500).json({
-      success: false,
-      message: "Upload + parsing failed",
-      error: error.message
-    });
-  }
+// Helper function: Cloudinary upload
+const uploadToCloudinary = (buffer, originalname) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder: "resumes",
+        resource_type: "raw",
+        public_id: `${Date.now()}-${originalname.replace(/\.[^/.]+$/, "")}`,
+      },
+      (error, result) => {
+        if (error) reject(error);
+        else resolve(result);
+      }
+    );
+    uploadStream.end(buffer);
+  });
 };
+
+function generateInterviewToken(length = 8) {
+  const chars =
+    'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+  let token = '';
+
+  const bytes = crypto.randomBytes(length);
+
+  for (let i = 0; i < length; i++) {
+    token += chars[bytes[i] % chars.length];
+  }
+
+  return token;
+}
+
+// Helper function: Generate unique token efficiently
+const generateUniqueToken = async () => {
+  const maxAttempts = 5;
+  
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const token = await generateInterviewToken(8);
+    const exists = await interviewInviteModel.exists({ token });
+    
+    if (!exists) return token;
+  }
+  
+  // Fallback: use timestamp + random for guaranteed uniqueness
+  return `${Date.now()}-${generateInterviewToken(8)}`;
+};
+
+
 
 const updateStatus = catchAsync(async (req, res) => {
   const { status, email, interviewDetails = {} } = req.body;
@@ -224,16 +236,27 @@ const updateStatus = catchAsync(async (req, res) => {
     status
   );
   console.log(template);
- 
+
+
+  var interview = await interviewInviteModel.findOne({ candidateId:candidate._id,jobId:candidate.jobId });
+
+
   // 4. Send email based on status if template exists
   if (template && candidate.email) {
     let emailResult;
     
     switch (status) {
       case "Invited-For-Interview":
+          if (interview) {
+    interview.status = 'pending';
+
+
+    await interview.save();
+  }
         emailResult = await emailUtil.sendInterviewInvitationEmail(
           candidate, 
           job, 
+          interview.token||'expired-invite',
           req.organization, 
           template, 
           interviewDetails
@@ -305,12 +328,12 @@ const updateStatus = catchAsync(async (req, res) => {
 
   res.send(candidate);
 });
+
 module.exports = {
-  apply,
+
   getCandidatesByJob,
   getCandidate,
   getCandidatesByOrg,
   updateStatus,
-  uploadResumeController,
   applyWithResume
 };

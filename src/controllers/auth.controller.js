@@ -11,7 +11,6 @@ const { Polar } = require("@polar-sh/sdk");
 
 const polar = new Polar({
   accessToken: process.env.POLAR_API_KEY,
-  server: "sandbox",
 });
 
 // Method 1: Direct checkout lookup (if you have the right ID)
@@ -44,11 +43,11 @@ const verifyCheckout = async (req, res) => {
     // ✅ Access product ID correctly
     const productId = session.productId;  // or session.product_id
     
-    if (productId === "52c3fda5-f8e3-49e7-a8d5-39cc0ffeae9b") {
+    if (productId === "9b1475a0-939e-4be5-a2db-c7055952bf84") {
       plan = "starter";  // Or "pro" based on your product
       interviewsLimit = 10;  // Match your product description
     }
-    else if(productId==="7824f871-fecf-46ce-9101-83a612c0dcf0"){
+    else if(productId==="abbaf307-25e5-41d0-82c8-6ef293218175"){
   plan = "pro";  // Or "pro" based on your product
       interviewsLimit = 50;  
     }

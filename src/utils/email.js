@@ -89,8 +89,8 @@ const sendEmail = async ({ to, subject, html, from = DEFAULT_FROM, replyTo = nul
 };
 
 // Application Received Email
-const sendApplicationReceivedEmail = async (candidate, job, organization, template) => {
-  const interviewLink = `http://app.hirelai.com/interview/${job._id}/${candidate._id}`;
+const sendApplicationReceivedEmail = async (candidate, job,token, organization, template) => {
+  const interviewLink = `http://app.hirelai.com/interview/${token}`;
   
   const variables = {
     name: candidate.name,
@@ -134,8 +134,8 @@ const sendShortlistedEmail = async (candidate, job, organization, template) => {
 };
 
 // Interview Invitation Email
-const sendInterviewInvitationEmail = async (candidate, job, organization, template, interviewDetails = {}) => {
-  const interviewLink = `http://app.hirelai.com/interview/${candidate.jobId}/${candidate._id}`;
+const sendInterviewInvitationEmail = async (candidate, job,token, organization, template, interviewDetails = {}) => {
+  const interviewLink = `http://app.hirelai.com/interview/${token}`;
   
   const variables = {
     name: candidate.name,

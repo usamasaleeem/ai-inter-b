@@ -5,8 +5,6 @@ const upload = require("../middlewares/upload");
 const router = express.Router();
 const parseResume = require("../middlewares/parse.middleware");
 
-
-router.post('/apply', candidateController.apply);
 router.post(
   "/resume-upload",
   upload.single("resume"),

@@ -7,10 +7,12 @@ const retellService = require('../services/retell.service');
 const ApiError = require('../utils/ApiError');
 const Job = require('../models/job.model');
 const Organization = require('../models/organization.model');
+const authService = require('../services/auth.service');
 
 const { PutObjectCommand, CompleteMultipartUploadCommand, UploadPartCommand, CreateMultipartUploadCommand, AbortMultipartUploadCommand, GetObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const r2 = require("../utils/r2");
+const interviewInviteModel = require('../models/interviewInvite.model');
 
 // Get presigned URL for initial chunk
 
@@ -76,7 +78,12 @@ const getAllSessionVideos = async (req, res) => {
 
 const getUploadUrl = async (req, res) => {
   try {
-    let { fileType, fileName,jobId,candidateId, folder } = req.body;
+    let { fileType, fileName,token, folder } = req.body;
+
+const interview=await interviewInviteModel.findOne({token})
+const candidateId=interview.candidateId
+const jobId=interview.jobId
+console.log(interview)
 console.log(fileType)
   
 
@@ -118,9 +125,20 @@ console.log(uploadUrl)
 
 
 const startInterview = catchAsync(async (req, res) => {
-  const { candidateId, jobId } = req.body;
-  console.log(jobId)
+  const { token } = req.body;
+ 
+const interview=await  interviewInviteModel.findOne({token})
+const candidateId=interview.candidateId
+const jobId=interview.jobId
+console.log(interview)
 
+// prevent completed interview restart
+if (interview.status === 'completed') {
+  throw new ApiError(
+    httpStatus.BAD_REQUEST,
+    'Interview already completed'
+  );
+}
 
   // Delete existing folder for this job/candidate before starting new interview
   try {
@@ -211,11 +229,86 @@ const startInterview = catchAsync(async (req, res) => {
   });
 });
 
-const endInterview = catchAsync(async (req, res) => {
-  const { callId } = req.body;
-  console.log(callId)
 
-  const session = await Session.findOne({ retellCallId: callId });
+const endInterview = catchAsync(async (req, res) => {
+  const { token } = req.body;
+  console.log(req.body)
+
+
+const interview = await interviewInviteModel.findOne({ token });
+  const job = await jobService.getJobById(interview.jobId);
+  
+  const candidate = await candidateService.updateCandidateStatus(
+    interview.candidateId,
+    'Interviewed',
+    job.organizationId
+  );
+  console.log(candidate);
+const status='Interviewed'
+  // 2. Get the job detailss
+
+  // 3. Get matching template based on status
+  const template = await authService.getTemplateByStatus(
+    req.organization.id,
+    'Interviewed'
+  );
+
+    if (template && candidate.email) {
+    let emailResult;
+    
+    switch (status) {
+      
+      case "Interviewed":
+        // You might want to send a post-interview feedback email
+        emailResult = await emailUtil.sendEmail({
+          to: candidate.email,
+          subject: template.title || `Interview Update: ${job?.title}`,
+          html: emailUtil.replaceTemplateVariables(template.content, {
+            name: candidate.name,
+            jobTitle: job?.title,
+            companyName: req.organization.name,
+            status: "Interviewed",
+            interviewDate: interviewDetails.date,
+            interviewTime: interviewDetails.time,
+          }),
+        });
+        break;
+     
+    }
+    
+    if (!emailResult.success) {
+      console.error(`Failed to send ${status} email to ${candidate.email}:`, emailResult.error);
+    }
+  } else if (!template) {
+    console.warn(`No template found for status: ${status}`);
+  }
+if (!interview) {
+  throw new Error('Interview not found');
+}
+
+interview.status = 'completed';
+
+
+
+
+
+await interview.save();
+  // Get mock analysis from retell end call mock
+
+
+ 
+
+  res.send({
+    sucess: true,
+  });
+});
+
+const endInterviewWebhook = catchAsync(async (req, res) => {
+  console.log(req.body)
+  const { transcript,call_id,recording_url } = req.body.call;
+  console.log(req.body)
+
+  const session = await Session.findOne({ retellCallId: call_id });
   if (!session) {
     throw new ApiError(404, 'Session not found');
   }
@@ -228,8 +321,8 @@ const endInterview = catchAsync(async (req, res) => {
   await session.save();
 
   const job = await jobService.getJobById(session.jobId);
-  const analysisData = await retellService.endCall(callId, job);
-
+  var analysisData = await retellService.endCall(transcript, job);
+analysisData.recordingUrl=recording_url
   // Save the analysis under Candidate
   await candidateService.saveInterviewAnalysis(
     session.candidateId,
@@ -260,5 +353,6 @@ module.exports = {
   startInterview,
   endInterview,
   createJobAgent,getUploadUrl,
-  getAllSessionVideos
+  getAllSessionVideos,
+  endInterviewWebhook
 };

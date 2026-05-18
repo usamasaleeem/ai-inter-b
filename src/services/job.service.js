@@ -85,8 +85,27 @@ const draftJob = async (id, organizationId) => {
   await job.save();
   return job;
 };
-
+const incrementApplicantsCount = async (jobId, session = null) => {
+  const options = { new: true };
+  if (session) options.session = session;
+  
+  const job = await Job.findByIdAndUpdate(
+    jobId,
+    { 
+      $inc: { applicants: 1 },
+    
+    },
+    options
+  );
+  
+  if (!job) {
+    throw new Error('Job not found');
+  }
+  
+  return job;
+};
 module.exports = {
+  incrementApplicantsCount,
   createJob,
   queryJobsByOrganization,
   getJobByIdAndOrganization,
