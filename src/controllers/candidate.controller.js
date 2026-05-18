@@ -101,7 +101,7 @@ const applyWithResume = catchAsync(async (req, res) => {
     // 4. Extract work experience (consider making this non-blocking or optional)
     let workExperience = { workExperience: null };
     try {
-      // workExperience = await retellService.extractWorkExperience(extractedText);
+     workExperience = await retellService.extractWorkExperience(extractedText);
     } catch (extractError) {
       console.warn('Work experience extraction failed:', extractError.message);
     }
