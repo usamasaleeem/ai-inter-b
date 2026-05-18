@@ -109,7 +109,7 @@ const createAgent = async (jobData) => {
     const agent = await retellClient.agent.create({
       agent_name: `Interviewer for ${jobData.title}`,
       voice_id: 'retell-Cimo',
-      webhook_url:"https://scoff-retype-dislodge.ngrok-free.dev/api/interview/webhook",
+      webhook_url:"https://api.hirelai.com/api/interview/webhook",
       webhook_events:["call_analyzed"],
 
       max_call_duration_ms:600000,
