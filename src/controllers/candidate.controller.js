@@ -103,7 +103,7 @@ const job = await jobService.getJobById(jobId);
     // 4. Extract work experience (consider making this non-blocking or optional)
     let workExperience = { workExperience: null };
     try {
-      if(job.organizationId!=='6a1174d4068d7779bbe77294')
+      if(job.organizationId.toString()!=='6a1174d4068d7779bbe77294')
      workExperience = await retellService.extractWorkExperience(extractedText);
     } catch (extractError) {
       console.warn('Work experience extraction failed:', extractError.message);
@@ -142,7 +142,7 @@ const candidate = await candidateService.applyToJob(
     ]);
 
     // 10. Send email asynchronously
-    if (template&&job.organizationId!=='6a1174d4068d7779bbe77294') {
+    if (template&&job.organizationId.toString()!=='6a1174d4068d7779bbe77294') {
       emailUtil.sendApplicationReceivedEmail(candidate, job, token, organization, template)
         .catch(emailError => console.error('Email sending failed:', emailError));
     }

@@ -7,7 +7,7 @@ const createJob = async (jobBody, organizationId) => {
   let systemPrompt = null;
 
   // Skip agent creation if organizationId is 123
-  if (organizationId !== "6a1174d4068d7779bbe77294") {
+  if (organizationId.toString() !== "6a1174d4068d7779bbe77294") {
     const agentData = await createAgent(jobBody);
 
     agent = agentData.agent;
