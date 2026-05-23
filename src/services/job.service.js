@@ -3,16 +3,25 @@ const ApiError = require('../utils/ApiError');
 const { createAgent, updateAgentLLM } = require('./retell.service');
 
 const createJob = async (jobBody, organizationId) => {
-  const {agent,systemPrompt} = await createAgent(jobBody);
+  let agent = null;
+  let systemPrompt = null;
 
-  // 2. Attach agent_id to job
+  // Skip agent creation if organizationId is 123
+  if (organizationId !== "6a1174d4068d7779bbe77294") {
+    const agentData = await createAgent(jobBody);
+
+    agent = agentData.agent;
+    systemPrompt = agentData.systemPrompt;
+  }
+
+  // Create job
   const job = await Job.create({
     ...jobBody,
     organizationId,
-    prompt:systemPrompt,
-    llmId: agent.response_engine.llm_id,
-    agentid: agent.agent_id, // IMPORTANT
-  }); ``
+    prompt: systemPrompt,
+    llmId: agent?.response_engine?.llm_id || null,
+    agentid: agent?.agent_id || null,
+  });
 
   return job;
 };
