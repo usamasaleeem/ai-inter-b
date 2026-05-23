@@ -12,6 +12,7 @@ router.post('/login', authController.login);
 
 
 router.use(auth);
+
 router.post(
   "/logo-upload",
   upload.single("logo"), // 👈 field name from frontend

@@ -95,25 +95,30 @@ const applyWithResume = catchAsync(async (req, res) => {
       uploadToCloudinary(file.buffer, file.originalname)
     ]);
 
+// Get job details
+const job = await jobService.getJobById(jobId);
     const extractedText = parsed.text;
     const resumeUrl = cloudinaryResult.secure_url;
 
     // 4. Extract work experience (consider making this non-blocking or optional)
     let workExperience = { workExperience: null };
     try {
+      if(job.organizationId!=='6a1174d4068d7779bbe77294')
      workExperience = await retellService.extractWorkExperience(extractedText);
     } catch (extractError) {
       console.warn('Work experience extraction failed:', extractError.message);
     }
 
-    // 5. Create candidate and job lookup in parallel
-    const [candidate, job] = await Promise.all([
-      candidateService.applyToJob(jobId, {
-        ...candidateData,
-        resumeUrl
-      }, workExperience.workExperience),
-      jobService.getJobById(jobId)
-    ]);
+   // Create candidate
+const candidate = await candidateService.applyToJob(
+  jobId,
+  {
+    ...candidateData,
+    resumeUrl
+  },
+  workExperience.workExperience
+);
+
 
     // 6. Increment applicants count (simple atomic operation)
     await Job.findByIdAndUpdate(jobId, {
@@ -137,7 +142,7 @@ const applyWithResume = catchAsync(async (req, res) => {
     ]);
 
     // 10. Send email asynchronously
-    if (template) {
+    if (template&&job.organizationId!=='6a1174d4068d7779bbe77294') {
       emailUtil.sendApplicationReceivedEmail(candidate, job, token, organization, template)
         .catch(emailError => console.error('Email sending failed:', emailError));
     }
